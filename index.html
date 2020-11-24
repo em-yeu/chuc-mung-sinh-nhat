@@ -255,8 +255,10 @@
 						ctx = this.ctx;
 					}
 					ctx.fillStyle="rgb(31, 31, 66)";
-					ctx.fillRect(0,0,this.width,this.height);					
+					ctx.fillRect(0,0,this.width,this.height);	
+					ctx.lineWidth=5;				
 					ctx.strokeRect(0,0,this.width,this.height);
+					ctx.lineWidth=1;
 					for(var i=0;i<this.cells.length;i++){
 						for(var j=0;j<this.cells[i].length;j++){
 							this.cells[i][j].render(ctx);
