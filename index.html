@@ -1,0 +1,607 @@
+<html>
+	<head>
+			<meta name="viewport" content="width=800"> 
+			<style>
+				body {
+					touch-action: manipulation;
+				}
+			</style>
+	</head>
+	<body style="background:rgb(31, 31, 66);">
+		<script type='text/javascript' src='http://www.midijs.net/lib/midi.js'></script>
+
+		<script src="./js/levels.js?dsf"></script>
+
+		<div style="margin:auto;text-align:center;">
+			<canvas id="canvas" height=800 width=800>	
+			</canvas>
+		</div>
+
+		<script>
+			var screen_h; 
+			var screen_w;
+			var lockout_state_change = false;
+			var blueberry = new Image();
+			blueberry.src = "./img/blue_sm.png";
+			var heart = new Image();
+			heart.src = "./img/heart.png";
+			var strawberry = new Image();
+			strawberry.src = "./img/strawberry.png";
+			var kill_text = false;
+			function writeText(text, x, y, callback){
+						var txt = text;
+						var x = x;
+						var i = 0;
+						var dashLen = 220, dashOffset = dashLen;
+						var speed = 10;
+						function loop() {
+							if(kill_text){return;}
+						  ctx.clearRect(x, y, 60, 30);
+						  ctx.setLineDash([dashLen - dashOffset, dashOffset - speed]); // create a long dash mask
+						  dashOffset -= speed;                                         // reduce dash length
+						  ctx.strokeText(txt[i], x, y);                               // stroke letter
+
+						  if (dashOffset > 0) requestAnimationFrame(loop);             // animate
+						  else {
+						    ctx.fillText(txt[i], x, y);                               // fill final letter
+						    dashOffset = dashLen;                                      // prep next char
+						    x += ctx.measureText(txt[i++]).width + ctx.lineWidth * Math.random();
+						    ctx.setTransform(1, 0, 0, 1, 0, 3 * Math.random());        // random y-delta
+						    ctx.rotate(Math.random() * 0.005);                         // random rotation
+						    if (i < txt.length) requestAnimationFrame(loop);
+						    else{ if(callback){callback();} }
+						  }
+						};
+						loop();
+			}
+			function writeWords(words){
+				
+				writeText(words[0].text, words[0].x, words[0].y, function(){
+					if(words.length>1){
+						writeText(words[1].text, words[1].x, words[1].y, function(){
+							writeText(words[2].text, words[2].x, words[2].y,function(){});
+						})
+					}
+				}) 
+			}
+
+			class Screen{
+				constructor(width,height,words,images){
+					this.width = width;
+					this.height=height;
+					this.words=words;
+					if(images){
+						this.images = images;
+					}else{
+						this.images = [];
+					}
+				}
+				load(){
+					kill_text=false;
+					ctx.save();
+					this.render();
+
+				}
+				unload(){
+					kill_text=true;
+					ctx.restore();
+				}
+				render(){
+					ctx.clearRect(0,0,this.width,this.height);
+					ctx.strokeStyle = ctx.fillStyle = "#1f2f90";										
+					ctx.strokeRect(0,0,this.width,this.height);
+					ctx.fillStyle="rgb(31, 31, 66)";
+					ctx.fillRect(0,0,this.width,this.height);
+					ctx.font = "50px Comic Sans MS, cursive, TSCu_Comic, sans-serif"; 
+					ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.globalAlpha = 2/3;
+					ctx.strokeStylye="#ffffff";
+					ctx.strokeRect(0,0,this.width,this.height);
+					ctx.strokeStyle = ctx.fillStyle = "#2fa4fc";					
+					writeWords(this.words);
+
+					if(this.include_img){
+						ctx.drawImage(strawberry,width/2 - 150,height/2 -150,100,100);	
+						ctx.drawImage(heart,width/2-50,height/2 -150,100,100);	
+						ctx.drawImage(blueberry,width/2 +50,height/2 -150,100,100);	
+					}
+					if(this.images){
+						for(var i=0;i<this.images.length;i++){
+							var img = this.images[i]
+							ctx.drawImage(img.img, img.x, img.y, img.w, img.h );
+						}
+					}
+				}
+			}
+
+			class Maze{
+				constructor(width,height,rows,cols){
+					this.ctx = null;
+					this.current_level = 0;
+					this.rows = rows;
+					this.cols =cols;
+					this.width= width;
+					this.height = height;
+					this.cells = [];
+					this.row=0;
+					this.col=0;
+					this.editing = false;
+					this.initCells();
+					this.path_color = "rgba(200,0,0,.6)";
+
+					this.state = {
+						index:0,
+						type: "screen"
+					};
+					this.current_state =0;
+					this.states=[{index:0,type: "screen"},{index:0,type:"maze"},{index:1,type: "screen"},{index:1,type:"maze"},{index:2,type: "screen"},{index:2,type:"maze"},{index:3,type: "screen"}];
+					this.screens = [
+						new Screen(width,height,[{text: "Happy Birthday", x:230, y:120},{text: "Em Yeu",x:270, y:180},{text:"Tap to play",x:270, y:450}]),
+						new Screen(width,height,[{text: "Great work, baby!", x:150, y:120},{text: "There's another",x:190, y:180},{text:"Blueberry waiting...",x:190, y:240}], [{img: heart,x:300,y:350,w:200,h:200}]),
+						new Screen(width,height,[{text: "You're the best!", x:150, y:120}], [{img: heart,x:300,y:200,w:200,h:200}]),
+						new Screen(width,height,[{text: "Happy Birthday!!!", x:220, y:120},{text: "I love you",x:240, y:180},{text:"So so so much	...",x:220, y:240}], [{img: heart,x:300,y:320,w:200,h:200}])];
+
+					this.runner = null;
+					this.end_x = cols-1;
+					this.end_y = rows-1;
+					this.grid_w = width/this.cols;
+					this.grid_h = height/this.rows;
+
+				}
+				nextScreen(){
+					this.screens[this.state.index].load();
+				}
+				nextState(){
+					if(this.state.type=="screen" && this.current_state < this.states.length-1){
+						this.screens[this.states[this.current_state].index].unload();
+					}
+					this.current_state++;
+					if(this.current_state < this.states.length){
+						this.state = this.states[this.current_state];
+						if(this.state.type=="maze"){
+							this.nextLevel();
+						}else{
+							this.nextScreen();
+						}
+					}else{
+						window.location="./img/chats.png";
+					}
+				}
+				initCells(){
+					for(var i=0;i<this.cols;i++){
+						for(var j=0;j<this.rows;j++){
+							if(!this.cells[j]){
+								this.cells[j]=[];
+							}
+							var cell = new Cell(j,i);
+							cell.maze = this;
+							this.cells[j][i] = cell;
+						}
+					}
+				}
+				start(){
+					if(this.state.type=="screen"){
+						this.screens[this.state.index].include_img = true;
+						this.screens[this.state.index].load();
+					}else{
+						this.nextLevel();
+						this.render();
+					}
+					
+				}
+				nextLevel(){
+					this.current_level++;
+					if(this.current_level-1 < levels.length){
+						importLevel(levels[this.current_level-1]);
+					}
+				}
+				canMove(row, col, i, j){
+					var fromCell = this.cells[row][col];
+					if(i<0 || i>=this.cells.length){
+						return false;
+					}
+					if(j<0 || j>=this.cells[i].length){
+						return false;
+					}
+
+					var toCell = this.cells[i][j];
+					if(col<j){
+						if(fromCell.borders.right || toCell.borders.left){
+							return false
+						}
+					}else if(j<col){
+						if(fromCell.borders.left || toCell.borders.right){
+							return false;
+						}
+					}
+					if(row<i){
+						if(fromCell.borders.bottom || toCell.borders.top){
+							return false;
+						}
+					}else if(i<row){
+						if(fromCell.borders.top || toCell.borders.bottom){
+							return false;
+						}
+					}
+
+					return true;
+
+				}
+				setEnd(pos){
+					this.end_x = pos.x;
+					this.end_y = pos.y;
+				}
+				isPath(j,i){
+					return this.cells[j][i].pathThrough;
+				}
+				removePath(j,i){
+					this.cells[j][i].removePath();
+				}
+				addPath(j,i){
+					this.cells[j][i].addPath();
+				}					
+				toggleCell(j,i){
+					this.cells[j][i].toggle();
+				}
+				setHighlight(j,i){
+					this.row = j;
+					this.col = i;
+					this.cells[j][i].highlight=true;
+				}
+				render(ctx){
+					if(!ctx){
+						ctx = this.ctx;
+					}
+					ctx.strokeRect(0,0,this.width,this.height);
+					for(var i=0;i<this.cells.length;i++){
+						for(var j=0;j<this.cells[i].length;j++){
+							this.cells[i][j].render(ctx);
+						}
+					}
+					if(this.runner)
+						this.runner.render(ctx);
+					ctx.drawImage(blueberry,(this.grid_h*this.end_y)+2,(this.grid_w*this.end_x)+2,this.grid_w-4, this.grid_h-4);	
+
+				}
+			}
+			class MazeRunner{
+				constructor(row,col){
+					this.row = row;
+					this.col = col;
+					this.maze = null;
+					this.prev_mov = 0;
+				}
+				canMove(i,j){
+					//can i move here?
+					return this.maze.canMove(this.row, this.col, i, j);
+				}
+				render(ctx){
+					var x = this.col * (this.maze.width/this.maze.cols)
+					var y = this.row * (this.maze.height/this.maze.rows)
+					ctx.drawImage(strawberry,x+2,y+2,this.maze.grid_w-4, this.maze.grid_h-4);	
+				}
+			}
+			class Cell{
+				constructor(row, col){
+					this.maze=null;
+					this.row=row;
+					this.col=col;
+					this.borders={
+						"top":true,
+						"right":true,
+						"bottom":true,
+						"left": true
+					}
+					this.has_runner = false;
+					this.pathThrough = false;
+					this.highlight = false;
+				}
+				removePath(){
+					this.pathThrough= false;				
+				}
+				addPath(){
+					this.pathThrough = true;
+				}
+				toggle(){
+					this.pathThrough= this.pathThrough ? false : true;
+				}
+				reset(){
+					this.borders={
+						"top":true,
+						"right":true,
+						"bottom":true,
+						"left": true
+					}
+					this.highlight = false;
+				}
+				render(ctx){
+					var x = this.col * (this.maze.width/this.maze.cols)
+					var y = this.row * (this.maze.height/this.maze.rows)
+					if(this.highlight){
+						ctx.fillStyle="#ccc";
+						ctx.fillRect(x,y,this.maze.width/this.maze.cols,this.maze.height/this.maze.rows)
+					}
+					if(this.pathThrough && !this.has_runner){
+						ctx.fillStyle=this.maze.path_color;
+						//ctx.fillRect(x,y,this.maze.width/this.maze.cols,this.maze.height/this.maze.rows)
+						ctx.beginPath();
+						ctx.arc(x+(this.maze.width/this.maze.cols)/2, y+(this.maze.height/this.maze.rows)/2, (this.maze.height/this.maze.rows)/3, 0, Math.PI*2);
+						ctx.fill();
+
+					}
+					if(this.borders.top){
+						ctx.beginPath();
+						ctx.moveTo(x,y);
+						ctx.lineTo(x+this.maze.width/this.maze.cols,y);
+						ctx.stroke();
+					}
+					if(this.borders.bottom){
+						ctx.beginPath();
+						ctx.moveTo(x,y+this.maze.height/this.maze.rows);
+						ctx.lineTo(x+this.maze.width/this.maze.cols,y+this.maze.height/this.maze.rows);
+						ctx.stroke();
+					}
+					if(this.borders.right){
+						ctx.beginPath();
+						ctx.moveTo(x+this.maze.width/this.maze.cols,y);
+						ctx.lineTo(x+this.maze.width/this.maze.cols,y+this.maze.height/this.maze.rows);
+						ctx.stroke();
+					}
+					if(this.borders.left){
+						ctx.beginPath();
+						ctx.moveTo(x,y);
+						ctx.lineTo(x,y+this.maze.height/this.maze.rows);
+						ctx.stroke();
+					}
+
+				}
+			}
+
+			document.body.addEventListener("keydown",function(e){
+
+				e.preventDefault();
+				if(m.editing){
+					if(e.which==37){
+					//left
+						m.cells[m.row][m.col].borders.left=false;					
+						m.col--;
+						m.setHighlight(m.row,m.col);	
+						m.cells[m.row][m.col].borders.right=false;
+
+					}
+					if(e.which==38){
+						//up
+						m.cells[m.row][m.col].borders.top=false;					
+						m.row--;
+						m.setHighlight(m.row,m.col);
+						m.cells[m.row][m.col].borders.bottom=false;					
+
+					}
+					if(e.which==39){
+						//right
+						m.cells[m.row][m.col].borders.right=false;
+						m.col++;
+						m.setHighlight(m.row,m.col);
+						m.cells[m.row][m.col].borders.left=false;
+
+					}
+					if(e.which==40){
+						//down
+						m.cells[m.row][m.col].borders.bottom	=false;					
+
+						m.row++;
+						m.setHighlight(m.row,m.col);
+						m.cells[m.row][m.col].borders.top=false;					
+
+					}
+				}else if(m.state.type=="maze"){
+					// if the new cell you're going to is already to
+					switch(e.which){
+						case 37:
+
+							if(m_runner.canMove(m_runner.row,m_runner.col-1)){
+
+								// if the next move moves to existing path, then turn off
+								if(m.isPath(m_runner.row,m_runner.col-1)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.col--;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=37;
+							}
+							break;
+						case 38:
+							if(m_runner.canMove(m_runner.row-1,m_runner.col)){
+
+								if(m.isPath(m_runner.row-1,m_runner.col)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.row--;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=38;
+							}
+							break;
+						case 39:
+							//move right
+							if(m_runner.canMove(m_runner.row,m_runner.col+1)){
+
+								if(m.isPath(m_runner.row,m_runner.col+1)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}	
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.col++;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;								
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=39;
+							}
+							break;
+						case 40:
+							if(m_runner.canMove(m_runner.row+1,m_runner.col)){
+
+								if(m.isPath(m_runner.row+1,m_runner.col)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}		
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.row++;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=40;			
+							}				
+							break;
+					}
+
+					// did win? go to transition screen.
+					ctx.clearRect(0,0,width,height);
+					m.render(ctx);
+					m_runner.render(ctx);
+					m.render(ctx)	
+					//check for winner
+					if(m_runner.row == m_runner.maze.end_x && m_runner.col == m_runner.maze.end_y){
+						// winner!
+						console.log("WINNNER");
+						m.nextState();
+						
+					}									
+				}
+
+
+			});
+			document.body.addEventListener("touchstart",function(e){
+				var x = e.touches[0].pageX;
+				var y = e.touches[0].pageY;
+				console.log(x);
+				console.log(y);
+				if(m.state.type=="maze"){
+				if(x > 3*screen_w/4 ){
+							if(m_runner.canMove(m_runner.row,m_runner.col+1)){
+
+								if(m.isPath(m_runner.row,m_runner.col+1)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}	
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.col++;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;								
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=39;
+							}
+				}else if(x < screen_w/4 ){
+							if(m_runner.canMove(m_runner.row,m_runner.col-1)){
+
+								// if the next move moves to existing path, then turn off
+								if(m.isPath(m_runner.row,m_runner.col-1)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.col--;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=37;
+							}
+					//move left
+				}else if( y>screen_h/2){
+
+					//move down
+					if(m_runner.canMove(m_runner.row+1,m_runner.col)){
+
+								if(m.isPath(m_runner.row+1,m_runner.col)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}		
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.row++;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=40;			
+							}	
+				}else if( y<screen_h/2 ){
+							if(m_runner.canMove(m_runner.row-1,m_runner.col)){
+
+								if(m.isPath(m_runner.row-1,m_runner.col)){
+									m.removePath(m_runner.row,m_runner.col);								
+								}
+								m.cells[m_runner.row][m_runner.col].has_runner=false;
+								m_runner.row--;
+								m.cells[m_runner.row][m_runner.col].has_runner=true;
+								m.addPath(m_runner.row,m_runner.col);
+								m_runner.prev_mov=38;
+							}
+				}
+				// did win? go to transition screen.
+					ctx.clearRect(0,0,width,height);
+					m.render(ctx);
+					m_runner.render(ctx);
+					m.render(ctx)	
+					//check for winner
+					if(m_runner.row == m_runner.maze.end_x && m_runner.col == m_runner.maze.end_y){
+						// winner!
+						m.nextState();
+						lockout_state_change = true;
+						setTimeout(function(){lockout_state_change=false;},500);
+					}	
+				}
+			});
+			canvas.onclick=function(e){
+				if(m.editing){
+					x = e.offsetX;
+					y = e.offsetY;
+					//hightlight a square
+					var i = Math.floor(x/(width/cols))
+					var j = Math.floor(y/(height/rows));
+					m.setHighlight(j,i);
+					m.cells[j][i].highlight=true;
+					m.render(ctx);
+				}else if(m.state.type=="screen"){
+					if(!lockout_state_change)
+						m.nextState();
+	
+					if(audio_not_playing){
+						MIDIjs.play('./mid/monkey.mid')
+						audio_not_playing=false;
+					}
+				}
+			}
+			ctx = canvas.getContext('2d');			
+			var width=800;
+			var audio_not_playing= true;
+			var height=800;
+			var rows=40;
+			var cols=40;
+			var m = new Maze(width,height,rows,cols);
+			m.ctx = ctx;
+			var m_runner = new MazeRunner(0,0);
+			m_runner.maze=m;
+			m.runner = m_runner;
+			ctx.strokeStyle="#2fa4fc"
+			strawberry.onload=function(){
+				m.start();
+				MIDIjs.player_callback = get_time;
+				screen_h = (window.innerHeight > 0) ? window.innerHeight : screen.height
+				screen_w = (window.innerWidth > 0) ? window.innerWidth : screen.width
+				// load a midi file in the browser
+			}
+			var songs =["./mid/monkey.mid","./mid/perfect.mid","./mid/this_way.mid"];
+			var next_song = 0
+			get_time = function(ev){
+				
+				if((next_song ==0 || next_song==2) && ev.time > 44){
+					MIDIjs.stop();
+					next_song++;
+					next_song = next_song % songs.length;
+					MIDIjs.play(songs[next_song]);
+				}else if(next_song==1 && ev.time> 264){
+					MIDIjs.stop();
+					next_song++;
+					next_song = next_song % songs.length;
+					MIDIjs.play(songs[next_song]);
+				}
+			}
+	
+		</script>
+	</body>
+</html>
