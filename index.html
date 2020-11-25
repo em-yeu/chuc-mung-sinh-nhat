@@ -14,7 +14,10 @@
 
 		<div style="margin:auto;text-align:center;">
 			<canvas id="canvas" height=800 width=800>	
-			</canvas>
+			</canvas><br/>
+			<div style="background:white;width:800px;margin:auto;text-align:center;padding:20px 0px;">
+				<a onclick="loadLevel(1);" href="#level1">Level 1</a> <a onclick="loadLevel(2);" href="#level2">Level 2</a> <a onclick="loadLevel(3);" href="#level3">Level 3</a>
+			</div>
 		</div>
 
 		<script>
@@ -28,6 +31,25 @@
 			var strawberry = new Image();
 			strawberry.src = "./img/strawberry.png";
 			var kill_text = false;
+			function loadLevel(n){
+				if(m.state.type=="screen" && m.current_state < m.states.length-1){
+					m.screens[m.states[m.current_state].index].unload();
+				}
+					if(n == 1){
+						m.current_state = 1;
+					}
+					if( n==2){
+						m.current_state = 3;
+					}
+					if( n==3){
+						m.current_state = 5;
+					}
+					m.state = m.states[m.current_state];
+					m.current_level = n-1;
+					m.nextLevel();		
+				
+
+			}
 			function writeText(text, x, y, callback){
 						var txt = text;
 						var x = x;
